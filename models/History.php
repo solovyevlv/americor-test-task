@@ -3,9 +3,11 @@
 namespace app\models;
 
 use app\models\traits\ObjectNameTrait;
+use app\widgets\HistoryList\helpers\HistoryListHelper;
 use Yii;
 use yii\db\ActiveQuery;
 use yii\db\ActiveRecord;
+use yii\helpers\Html;
 
 /**
  * This is the model class for table "{{%history}}".
@@ -91,26 +93,17 @@ class History extends ActiveRecord
         ];
     }
 
-    /**
-     * @return ActiveQuery
-     */
-    public function getCustomer()
+    public function getCustomer(): ActiveQuery
     {
         return $this->hasOne(Customer::class, ['id' => 'customer_id']);
     }
 
-    /**
-     * @return ActiveQuery
-     */
-    public function getUser()
+    public function getUser(): ActiveQuery
     {
         return $this->hasOne(User::class, ['id' => 'user_id']);
     }
 
-    /**
-     * @return array
-     */
-    public static function getEventTexts()
+    public static function getEventTexts(): array
     {
         return [
             self::EVENT_CREATED_TASK => Yii::t('app', 'Task created'),
@@ -148,44 +141,161 @@ class History extends ActiveRecord
         return static::getEventTextByEvent($this->event);
     }
 
-
     /**
-     * @param $attribute
-     * @return null
+     * @return null|mixed
      */
-    public function getDetailChangedAttribute($attribute)
+    public function getDetailChangedAttribute(string $attribute)
     {
         $detail = json_decode($this->detail);
-        return isset($detail->changedAttributes->{$attribute}) ? $detail->changedAttributes->{$attribute} : null;
+        return $detail->changedAttributes->{$attribute} ?? null;
     }
 
-    /**
-     * @param $attribute
-     * @return null
-     */
-    public function getDetailOldValue($attribute)
+    public function getDetailOldValue(string $attribute): ?string
     {
         $detail = $this->getDetailChangedAttribute($attribute);
-        return isset($detail->old) ? $detail->old : null;
+        return (string)$detail->old ?? null;
     }
 
-    /**
-     * @param $attribute
-     * @return null
-     */
-    public function getDetailNewValue($attribute)
+    public function getDetailNewValue(string $attribute): ?string
     {
         $detail = $this->getDetailChangedAttribute($attribute);
-        return isset($detail->new) ? $detail->new : null;
+        return (string)$detail->new ?? null;
     }
 
-    /**
-     * @param $attribute
-     * @return null
-     */
-    public function getDetailData($attribute)
+    public function getDetailData(string $attribute): ?string
     {
         $detail = json_decode($this->detail);
-        return isset($detail->data->{$attribute}) ? $detail->data->{$attribute} : null;
+        return (string)$detail->data->{$attribute} ?? null;
+    }
+
+    public function getUsername(): string
+    {
+        return isset($this->user) ? $this->user->username : Yii::t('app', 'System');
+    }
+
+    public function getFullMessage(): string
+    {
+        switch ($this->event) {
+            case History::EVENT_CREATED_TASK:
+            case History::EVENT_COMPLETED_TASK:
+            case History::EVENT_UPDATED_TASK:
+                return "$this->eventText: " . ($this->task->title ?? '');
+            case History::EVENT_INCOMING_SMS:
+            case History::EVENT_OUTGOING_SMS:
+                return $this->sms->message ? $this->sms->message : '';
+            case History::EVENT_CUSTOMER_CHANGE_TYPE:
+                return "$this->eventText " .
+                    (Customer::getTypeTextByType($this->getDetailOldValue('type')) ?? "not set") . ' to ' .
+                    (Customer::getTypeTextByType($this->getDetailNewValue('type')) ?? "not set");
+            case History::EVENT_CUSTOMER_CHANGE_QUALITY:
+                return "$this->eventText " .
+                    (Customer::getQualityTextByQuality($this->getDetailOldValue('quality')) ?? "not set") . ' to ' .
+                    (Customer::getQualityTextByQuality($this->getDetailNewValue('quality')) ?? "not set");
+            case History::EVENT_INCOMING_CALL:
+            case History::EVENT_OUTGOING_CALL:
+                $totalDisposition = $this->call && $this->call->getTotalDisposition(false)
+                    ? sprintf("<span class='text-grey'>%s</span>", $this->call->getTotalDisposition(false))
+                    : '';
+                return $this->call
+                    ? sprintf('%s %s', $this->call->totalStatusText, $totalDisposition)
+                    : '<i>Deleted</i>';
+            default:
+                return $this->eventText;
+        }
+    }
+
+    public function getRowTemplate(): string
+    {
+        switch ($this->event) {
+            case History::EVENT_CUSTOMER_CHANGE_TYPE:
+            case History::EVENT_CUSTOMER_CHANGE_QUALITY:
+                return '_item_statuses_change';
+            default:
+                return '_item_common';
+        }
+    }
+
+    public function getRowTemplateData(): array
+    {
+        switch ($this->event) {
+            case History::EVENT_CREATED_TASK:
+            case History::EVENT_COMPLETED_TASK:
+            case History::EVENT_UPDATED_TASK:
+                $task = $this->task;
+
+                return [
+                    'user' => $this->user,
+                    'body' => $this->getFullMessage(),
+                    'iconClass' => 'fa-check-square bg-yellow',
+                    'footerDatetime' => $this->ins_ts,
+                    'footer' => isset($task->customerCreditor->name) ? "Creditor: " . $task->customerCreditor->name : ''
+                ];
+            case History::EVENT_INCOMING_SMS:
+            case History::EVENT_OUTGOING_SMS:
+                return [
+                    'user' => $this->user,
+                    'body' => $this->getFullMessage(),
+                    'footer' => $this->sms->direction == Sms::DIRECTION_INCOMING ?
+                        Yii::t('app', 'Incoming message from {number}', [
+                            'number' => $this->sms->phone_from ?? ''
+                        ]) : Yii::t('app', 'Sent message to {number}', [
+                            'number' => $this->sms->phone_to ?? ''
+                        ]),
+                    'iconIncome' => $this->sms->direction == Sms::DIRECTION_INCOMING,
+                    'footerDatetime' => $this->ins_ts,
+                    'iconClass' => 'icon-sms bg-dark-blue'
+                ];
+            case History::EVENT_OUTGOING_FAX:
+            case History::EVENT_INCOMING_FAX:
+                $fax = $this->fax;
+
+                return [
+                    'user' => $this->user,
+                    'body' => $this->getFullMessage() .
+                        ' - ' .
+                        (isset($fax->document) ? Html::a(
+                            Yii::t('app', 'view document'),
+                            $fax->document->getViewUrl(),
+                            [
+                                'target' => '_blank',
+                                'data-pjax' => 0
+                            ]
+                        ) : ''),
+                    'footer' => Yii::t('app', '{type} was sent to {group}', [
+                        'type' => $fax ? $fax->getTypeText() : 'Fax',
+                        'group' => isset($fax->creditorGroup) ? Html::a($fax->creditorGroup->name, ['creditors/groups'], ['data-pjax' => 0]) : ''
+                    ]),
+                    'footerDatetime' => $this->ins_ts,
+                    'iconClass' => 'fa-fax bg-green'
+                ];
+            case History::EVENT_CUSTOMER_CHANGE_TYPE:
+            case History::EVENT_CUSTOMER_CHANGE_QUALITY:
+                return [
+                    'model' => $this,
+                    'oldValue' => Customer::getQualityTextByQuality($this->getDetailOldValue('quality')),
+                    'newValue' => Customer::getQualityTextByQuality($this->getDetailNewValue('quality')),
+                ];
+            case History::EVENT_INCOMING_CALL:
+            case History::EVENT_OUTGOING_CALL:
+                $call = $this->call;
+                $answered = $call && $call->status == Call::STATUS_ANSWERED;
+
+                return [
+                    'user' => $this->user,
+                    'content' => $call->comment ?? '',
+                    'body' => $this->getFullMessage(),
+                    'footerDatetime' => $this->ins_ts,
+                    'footer' => isset($call->applicant) ? "Called <span>{$call->applicant->name}</span>" : null,
+                    'iconClass' => $answered ? 'md-phone bg-green' : 'md-phone-missed bg-red',
+                    'iconIncome' => $answered && $call->direction == Call::DIRECTION_INCOMING
+                ];
+            default:
+                return [
+                    'user' => $this->user,
+                    'body' => $this->getFullMessage(),
+                    'bodyDatetime' => $this->ins_ts,
+                    'iconClass' => 'fa-gear bg-purple-light'
+                ];
+        }
     }
 }

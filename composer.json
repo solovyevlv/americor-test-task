@@ -29,12 +29,16 @@
         "codeception/base": "~2.3.0",
         "codeception/verify": "~0.4.0",
         "codeception/specify": "~0.4.6",
-        "symfony/browser-kit": ">=2.7 <=4.2.4"
+        "symfony/browser-kit": ">=2.7 <=4.2.4",
+        "symfony/var-dumper": "^4.4"
     },
     "config": {
         "process-timeout": 1800,
         "fxp-asset": {
             "enabled": false
+        },
+        "allow-plugins": {
+            "yiisoft/yii2-composer": true
         }
     },
     "scripts": {
