@@ -2,23 +2,19 @@
 
 /**
  * @var $this yii\web\View
- * @var $model \app\models\History
  * @var $dataProvider yii\data\ActiveDataProvider
  * @var $exportType string
+ * @var $batchSize integer
+ * @var $fileName string
  */
 
 use app\models\History;
 use app\widgets\Export\Export;
-use app\widgets\HistoryList\helpers\HistoryListHelper;
-
-$filename = 'history';
-$filename .= '-' . time();
 
 ini_set('max_execution_time', 0);
 ini_set('memory_limit', '2048M');
-?>
 
-<?= Export::widget([
+echo Export::widget([
     'dataProvider' => $dataProvider,
     'columns' => [
         [
@@ -27,31 +23,25 @@ ini_set('memory_limit', '2048M');
             'format' => 'datetime'
         ],
         [
+            'attribute' => 'username',
             'label' => Yii::t('app', 'User'),
-            'value' => function (History $model) {
-                return isset($model->user) ? $model->user->username : Yii::t('app', 'System');
-            }
         ],
         [
-            'label' => Yii::t('app', 'Type'),
-            'value' => function (History $model) {
-                return $model->object;
-            }
+            'attribute' => 'object',
+            'label' => Yii::t('app', 'Type')
         ],
         [
-            'label' => Yii::t('app', 'Event'),
-            'value' => function (History $model) {
-                return $model->eventText;
-            }
+            'attribute' => 'eventText',
+            'label' => Yii::t('app', 'Event')
         ],
         [
-            'label' => Yii::t('app', 'Message'),
-            'value' => function (History $model) {
-                return strip_tags(HistoryListHelper::getBodyByModel($model));
-            }
+            'value' => function(History $model) {
+                return strip_tags($model->getFullMessage());
+            },
+            'label' => Yii::t('app', 'Message')
         ]
     ],
     'exportType' => $exportType,
-    'batchSize' => 2000,
-    'filename' => $filename
+    'batchSize' => $batchSize,
+    'filename' => $fileName
 ]);
