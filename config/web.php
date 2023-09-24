@@ -14,6 +14,7 @@ $config = [
     ],
     'name' => 'Americor Test',
     'container' => $container,
+    'layoutPath' => '@app/infrastructure/yii/views/layouts',
     'components' => [
         'request' => [
             // !!! insert a secret key in the following (if it is empty) - this is required by cookie validation
@@ -23,7 +24,7 @@ $config = [
 //            'class' => 'yii\caching\FileCache',
 //        ],
         'user' => [
-            'identityClass' => 'app\models\User',
+            'identityClass' => 'app\infrastructure\orm\models\User',
             'enableAutoLogin' => true,
         ],
         'errorHandler' => [
@@ -56,6 +57,13 @@ $config = [
         */
     ],
     'modules' => [
+        'site' => [
+            'class' => \yii\base\Module::class,
+            'controllerPath' => '@app/ui/controllers',
+            'controllerNamespace' => 'app\ui\controllers',
+            'defaultRoute' => 'site/index',
+            'viewPath' => '@app/infrastructure/yii/views',
+        ],
         'gridview' => [
             'class' => '\kartik\grid\Module'
         ]
